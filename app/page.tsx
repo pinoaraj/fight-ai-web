@@ -44,6 +44,8 @@ export default function Home() {
   const [intensity, setIntensity] = useState('moderate');
   const [activeTab, setActiveTab] = useState<'home' | 'sessions' | 'analyze' | 'progress' | 'profile'>('analyze');
   const [processingStep, setProcessingStep] = useState(0);
+  const [fighterAnchor, setFighterAnchor] = useState<{x:number;y:number}|null>(null);
+  const [fighterDescription, setFighterDescription] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
@@ -64,6 +66,11 @@ export default function Home() {
       body.append('language', language);
       body.append('review_focus', reviewFocus);
       body.append('intensity', intensity);
+      body.append('fighter_description', fighterDescription);
+      if (fighterAnchor) {
+        body.append('fighter_anchor_x', fighterAnchor.x.toFixed(4));
+        body.append('fighter_anchor_y', fighterAnchor.y.toFixed(4));
+      }
       body.append('sport', sport);
       body.append('stance', stance);
       body.append('athlete_marker', fighter === 'Guantes rojos' ? 'red_gloves' : 'visual_reid');
@@ -135,13 +142,18 @@ export default function Home() {
           {!video ? (
             <button className="drop" onClick={() => inputRef.current?.click()}><strong>SUBIR VIDEO</strong><span>MP4, MOV o archivo compatible del navegador</span></button>
           ) : (
-            <div className="videoWrap"><video ref={videoRef} src={videoUrl} controls/><div className="fileRow"><span>{video.name}</span><button onClick={() => inputRef.current?.click()}>Cambiar</button></div></div>
+            <div className="videoWrap"><div className="videoStage" onClick={e => {
+              if (fighter !== 'Otro') return;
+              const r = e.currentTarget.getBoundingClientRect();
+              setFighterAnchor({x:(e.clientX-r.left)/r.width,y:(e.clientY-r.top)/r.height});
+            }}><video ref={videoRef} src={videoUrl} controls playsInline/>{fighter === 'Otro' && <div className="anchorHint">{fighterAnchor ? '✓ PELEADOR MARCADO' : 'TOCA AL PELEADOR EN EL VIDEO'}</div>}{fighterAnchor && <span className="fighterAnchor" style={{left:(fighterAnchor.x*100)+'%',top:(fighterAnchor.y*100)+'%'}}/>}</div><div className="fileRow"><span>{video.name}</span><button onClick={() => inputRef.current?.click()}>Cambiar</button></div></div>
           )}
 
           <div className="sectionTitle fighterTitle"><span>02</span><div><b>PELEADOR OBJETIVO</b><small>La identidad se mantiene durante el análisis</small></div></div>
           <div className="fighters">
-            {['Guantes rojos','Guantes azules','Otro'].map(x => <button key={x} className={fighter === x ? 'active' : ''} onClick={() => setFighter(x)}>{x}</button>)}
+            {['Guantes rojos','Guantes azules','Otro'].map(x => <button key={x} className={fighter === x ? 'active' : ''} onClick={() => { setFighter(x); if (x !== 'Otro') setFighterAnchor(null); }}>{x}</button>)}
           </div>
+          {fighter === 'Otro' && <div className="fighterReid"><p>{language === 'es' ? 'Pausa el video y toca al peleador para crear un ancla visual. Agrega una descripción para reforzar la re-identificación.' : 'Pause the video and tap the fighter to create a visual anchor. Add a description to reinforce re-identification.'}</p><input value={fighterDescription} onChange={e => setFighterDescription(e.target.value)} placeholder={language === 'es' ? 'Ej: polera negra, más bajo, ortodoxo' : 'Ex: black shirt, shorter, orthodox'}/></div>}
           <div className="mobileSectionLabel">03 · {language === 'es' ? 'CONFIGURACIÓN' : 'SETUP'}</div>
           <div className="analysisOptions">
             <label>Disciplina<select value={sport} onChange={e => setSport(e.target.value as 'boxing' | 'kickboxing')}><option value="boxing">Boxeo</option><option value="kickboxing">Kickboxing</option></select></label>
