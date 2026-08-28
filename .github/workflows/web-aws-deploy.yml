@@ -2,16 +2,10 @@ name: Web AWS Deploy
 
 on:
   workflow_dispatch:
-  push:
+  workflow_run:
+    workflows: ["Web MVP CI"]
+    types: [completed]
     branches: [main]
-    paths:
-      - '.github/workflows/web-aws-deploy.yml'
-      - 'Dockerfile'
-      - '.dockerignore'
-      - 'package.json'
-      - 'tsconfig.json'
-      - 'app/**'
-      - 'infra/aws/**'
 
 concurrency:
   group: fight-ai-web-deploy-${{ github.ref }}
@@ -36,10 +30,20 @@ env:
 
 jobs:
   deploy:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+      - name: Resolve deploy SHA
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_run" ]; then
+            echo "DEPLOY_SHA=${{ github.event.workflow_run.head_sha }}" >> "$GITHUB_ENV"
+          else
+            echo "DEPLOY_SHA=${{ github.sha }}" >> "$GITHUB_ENV"
+          fi
 
       - name: Configure AWS credentials through GitHub OIDC
         uses: aws-actions/configure-aws-credentials@v6.2.3
@@ -61,7 +65,7 @@ jobs:
       - name: Build and push web image
         run: |
           set -euo pipefail
-          IMAGE_SHA="$ECR_REGISTRY/$ECR_REPOSITORY:${GITHUB_SHA}"
+          IMAGE_SHA="$ECR_REGISTRY/$ECR_REPOSITORY:${DEPLOY_SHA}"
           docker build -t "$IMAGE_SHA" .
           docker push "$IMAGE_SHA"
           echo "IMAGE_SHA=$IMAGE_SHA" >> "$GITHUB_ENV"
