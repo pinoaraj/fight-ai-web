@@ -74,7 +74,7 @@ export default function Home() {
       const chunk = file.slice(offset, next);
       const response = await fetch(`/api/uploads/${encodeURIComponent(initData.uploadId)}/chunk?offset=${offset}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/octet-stream', 'Content-Length': String(chunk.size) },
+        headers: { 'Content-Type': 'application/octet-stream' },
         body: chunk,
       });
       const result = await response.json() as { error?: string };
