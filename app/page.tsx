@@ -48,6 +48,7 @@ export default function Home() {
   const [fighterDescription, setFighterDescription] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [uploadProgress, setUploadProgress] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const videoUrl = useMemo(() => (video ? URL.createObjectURL(video) : ''), [video]);
@@ -57,26 +58,66 @@ export default function Home() {
     return () => clearInterval(id);
   }, [busy]);
 
+  async function uploadLargeVideo(file: File) {
+    const init = await fetch('/api/uploads/init', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: file.name, type: file.type || 'video/mp4', size: file.size }),
+    });
+    const initData = await init.json() as { uploadId?: string; chunkSize?: number; error?: string };
+    if (!init.ok || !initData.uploadId || !initData.chunkSize) throw new Error(initData.error || 'No se pudo iniciar la carga del video.');
+
+    const chunkSize = initData.chunkSize;
+    let offset = 0;
+    while (offset < file.size) {
+      const next = Math.min(file.size, offset + chunkSize);
+      const chunk = file.slice(offset, next);
+      const response = await fetch(`/api/uploads/${encodeURIComponent(initData.uploadId)}/chunk?offset=${offset}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/octet-stream', 'Content-Length': String(chunk.size) },
+        body: chunk,
+      });
+      const result = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(result.error || 'Falló un fragmento del video.');
+      offset = next;
+      setUploadProgress(Math.round((offset / file.size) * 100));
+    }
+    return initData.uploadId;
+  }
+
   async function analyze() {
     if (!video) return setError('Selecciona un video antes de analizar.');
     setBusy(true); setError(''); setReport(null);
     try {
-      const body = new FormData();
-      body.append('video', video);
-      body.append('language', language);
-      body.append('review_focus', reviewFocus);
-      body.append('intensity', intensity);
-      body.append('fighter_description', fighterDescription);
-      if (fighterAnchor) {
-        body.append('fighter_anchor_x', fighterAnchor.x.toFixed(4));
-        body.append('fighter_anchor_y', fighterAnchor.y.toFixed(4));
+      setUploadProgress(0);
+      const common = {
+        language,
+        review_focus: reviewFocus,
+        intensity,
+        fighter_description: fighterDescription,
+        fighter_anchor_x: fighterAnchor ? fighterAnchor.x.toFixed(4) : '',
+        fighter_anchor_y: fighterAnchor ? fighterAnchor.y.toFixed(4) : '',
+        sport,
+        stance,
+        athlete_marker: fighter === 'Guantes rojos' ? 'red_gloves' : fighter === 'Guantes azules' ? 'blue_gloves' : 'visual_reid',
+        glove_color: fighter === 'Guantes rojos' ? 'red' : fighter === 'Guantes azules' ? 'blue' : '',
+      };
+
+      let response: Response;
+      const useChunkedUpload = video.size >= 12 * 1024 * 1024;
+      if (useChunkedUpload) {
+        const uploadId = await uploadLargeVideo(video);
+        response = await fetch('/api/analyze', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...common, uploadId }),
+        });
+      } else {
+        const body = new FormData();
+        body.append('video', video);
+        Object.entries(common).forEach(([key, value]) => body.append(key, value));
+        response = await fetch('/api/analyze', { method: 'POST', body });
       }
-      body.append('sport', sport);
-      body.append('stance', stance);
-      body.append('athlete_marker', fighter === 'Guantes rojos' ? 'red_gloves' : 'visual_reid');
-      if (fighter === 'Guantes rojos') body.append('glove_color', 'red');
-      if (fighter === 'Guantes azules') body.append('glove_color', 'blue');
-      const response = await fetch('/api/analyze', { method: 'POST', body });
       const raw = await response.text();
       let data: Report | { error?: string } | null = null;
       try { data = raw ? JSON.parse(raw) : null; } catch { data = null; }
@@ -96,7 +137,7 @@ export default function Home() {
       setReport(data);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error inesperado.');
-    } finally { setBusy(false); }
+    } finally { setBusy(false); setUploadProgress(0); }
   }
 
   function jump(time: string) {
@@ -163,7 +204,7 @@ export default function Home() {
           <div className="optionBlock"><span>{language === 'es' ? 'Intensidad' : 'Intensity'}</span><div className="fighters compact">{[['technical','Técnico'],['light','Suave'],['moderate','Moderado'],['hard','Fuerte']].map(([id,label]) => <button key={id} className={intensity === id ? 'active' : ''} onClick={() => setIntensity(id)}>{label}</button>)}</div></div>
           <button className="primary" disabled={busy || !video} onClick={analyze}>{busy ? 'ANALIZANDO…' : 'ANALIZAR SPARRING'}</button>
           <button className="secondary" onClick={() => { setReport(demo); setError(''); }}>VER DEMO DEL REPORTE</button>
-          {busy && <div className="processingCard"><div className="spinner"/><b>{language === 'es' ? 'REVISANDO TU SPARRING' : 'REVIEWING YOUR SPARRING'}</b><div className="processingSteps">{['Preparando video','Identificando peleador','Revisando intercambios','Detectando patrones','Generando reporte'].map((x,i)=><span key={x} className={i <= processingStep ? 'done' : ''}><i/>{x}</span>)}</div><small>{language === 'es' ? 'El reporte solo eleva hallazgos con evidencia suficiente.' : 'The report only promotes findings with enough evidence.'}</small></div>}
+          {busy && <div className="processingCard"><div className="spinner"/><b>{language === 'es' ? 'REVISANDO TU SPARRING' : 'REVIEWING YOUR SPARRING'}</b>{uploadProgress > 0 && uploadProgress < 100 && <div className="uploadMeter"><span style={{width: uploadProgress + '%'}}/><b>{uploadProgress}%</b></div>}<div className="processingSteps">{['Preparando video','Identificando peleador','Revisando intercambios','Detectando patrones','Generando reporte'].map((x,i)=><span key={x} className={i <= processingStep ? 'done' : ''}><i/>{x}</span>)}</div><small>{language === 'es' ? 'El reporte solo eleva hallazgos con evidencia suficiente.' : 'The report only promotes findings with enough evidence.'}</small></div>}
           {error && <div className="error">{error}</div>}
         </div>
 
