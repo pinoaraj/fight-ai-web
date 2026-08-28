@@ -2,11 +2,11 @@ $ErrorActionPreference = 'Stop'
 
 $Profile = 'fight-ai'
 $Region = 'us-east-2'
-$Repo = 'pinoaraj/fight-ai'
+$Repo = 'pinoaraj/fight-ai-web'
 $GitHubOwner = 'pinoaraj'
 $GitHubOwnerId = '132783424'
-$GitHubRepoName = 'fight-ai'
-$GitHubRepoId = '1348995885'
+$GitHubRepoName = 'fight-ai-web'
+$GitHubRepoId = '1350097982'
 $DeployRole = 'FightAIGitHubDeployRole'
 $AppRunnerAccessRole = 'FightAIAppRunnerECRAccessRole'
 $EcrRepo = 'fight-ai-web'
@@ -72,7 +72,6 @@ $trust = @"
     "Condition": {
       "StringEquals": {"token.actions.githubusercontent.com:aud": "sts.amazonaws.com"},
       "StringLike": {"token.actions.githubusercontent.com:sub": [
-        "repo:$ImmutableRepo:ref:refs/heads/web/mvp",
         "repo:$ImmutableRepo:ref:refs/heads/main"
       ]}
     }
@@ -140,7 +139,7 @@ Write-Host ''
 Write-Host 'Fight AI AWS bootstrap VERIFIED.' -ForegroundColor Green
 Write-Host "Account: $AccountId"
 Write-Host "Region: $Region"
-Write-Host "GitHub OIDC subject: repo:$ImmutableRepo:ref:refs/heads/web/mvp"
+Write-Host "GitHub OIDC subject: repo:$ImmutableRepo:ref:refs/heads/main"
 Write-Host "GitHub OIDC role: arn:aws:iam::${AccountId}:role/${DeployRole}"
 Write-Host "ECR repository: $EcrRepo"
 Write-Host "App Runner ECR role: $accessRoleArn"
