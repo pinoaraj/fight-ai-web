@@ -50,7 +50,9 @@ if ($LASTEXITCODE -ne 0) { throw 'Failed to update AWS GitHub OIDC trust.' }
 Write-Host '3/4 Verifying OIDC trust...' -ForegroundColor DarkGray
 $Trust = aws iam get-role --role-name $AwsRoleName --profile $AwsProfile --query 'Role.AssumeRolePolicyDocument' --output json --no-cli-pager
 if ($LASTEXITCODE -ne 0) { throw 'Unable to verify IAM role trust.' }
-if ($Trust -notmatch [regex]::Escape($Subject)) { throw "OIDC verification failed: subject '$Subject' not found." }
+$TrustText = ($Trust -join "`n")
+$TrustText = [System.Net.WebUtility]::UrlDecode($TrustText)
+if (-not $TrustText.Contains($Subject)) { throw "OIDC verification failed: subject '$Subject' not found." }
 
 Write-Host "AWS OIDC trust VERIFIED: $Subject" -ForegroundColor Green
 Write-Host '4/4 Checking GitHub secret...' -ForegroundColor DarkGray
