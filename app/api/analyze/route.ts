@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createReadStream } from 'node:fs';
+import { removeUpload, uploadFilePath, type UploadMeta } from '../../../lib/upload-store';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -197,8 +199,131 @@ async function analyzeWithGemini(source: FormData) {
   };
 }
 
+
+async function analyzeStoredWithGemini(meta: UploadMeta, filePath: string, fields: Record<string, unknown>) {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) throw new Error('Gemini no está configurado en el servidor.');
+
+  const mimeType = meta.type || 'video/mp4';
+  const size = meta.size;
+  const start = await fetch('https://generativelanguage.googleapis.com/upload/v1beta/files', {
+    method: 'POST',
+    headers: {
+      'x-goog-api-key': apiKey,
+      'X-Goog-Upload-Protocol': 'resumable',
+      'X-Goog-Upload-Command': 'start',
+      'X-Goog-Upload-Header-Content-Length': String(size),
+      'X-Goog-Upload-Header-Content-Type': mimeType,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ file: { display_name: meta.name || 'fight-ai-sparring.mp4' } }),
+    cache: 'no-store',
+  });
+  if (!start.ok) throw new Error(`Gemini no pudo iniciar la carga (${start.status}).`);
+  const uploadUrl = start.headers.get('x-goog-upload-url');
+  if (!uploadUrl) throw new Error('Gemini no devolvió URL de carga.');
+
+  const stream = createReadStream(filePath);
+  const uploaded = await fetch(uploadUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Length': String(size),
+      'X-Goog-Upload-Offset': '0',
+      'X-Goog-Upload-Command': 'upload, finalize',
+    },
+    body: stream as unknown as BodyInit,
+    duplex: 'half',
+    cache: 'no-store',
+  } as RequestInit & { duplex: 'half' });
+  if (!uploaded.ok) throw new Error(`Gemini no pudo cargar el video (${uploaded.status}).`);
+  const fileInfo = await uploaded.json() as { file?: { name?: string; uri?: string; state?: string } };
+  const fileName = fileInfo.file?.name;
+  const fileUri = fileInfo.file?.uri;
+  if (!fileName || !fileUri) throw new Error('Gemini no devolvió referencia del video.');
+
+  let state = fileInfo.file?.state || 'PROCESSING';
+  for (let i = 0; i < 80 && state !== 'ACTIVE'; i += 1) {
+    if (state === 'FAILED') throw new Error('Gemini no pudo procesar el video.');
+    await sleep(1500);
+    const status = await fetch(`https://generativelanguage.googleapis.com/v1beta/${fileName}`, {
+      headers: { 'x-goog-api-key': apiKey },
+      cache: 'no-store',
+    });
+    if (!status.ok) throw new Error(`No se pudo consultar el estado del video en Gemini (${status.status}).`);
+    const statusJson = await status.json() as { state?: string };
+    state = statusJson.state || 'PROCESSING';
+  }
+  if (state !== 'ACTIVE') throw new Error('Gemini todavía no termina de preparar el video.');
+
+  const target = String(fields.glove_color || fields.athlete_marker || fields.fighter_description || 'selected fighter');
+  const sport = String(fields.sport || 'boxing');
+  const stance = String(fields.stance || 'unknown');
+  const language = String(fields.language || 'es');
+  const reviewFocus = String(fields.review_focus || 'full');
+  const intensity = String(fields.intensity || 'moderate');
+  const anchor = fields.fighter_anchor_x && fields.fighter_anchor_y
+    ? ` Visual anchor normalized coordinates: x=${fields.fighter_anchor_x}, y=${fields.fighter_anchor_y}.`
+    : '';
+  const outputLanguage = language === 'en' ? 'English' : 'Spanish';
+  const prompt = `Analyze this ${sport} sparring video. Evaluate ONLY the target fighter: ${target}. Declared stance: ${stance}. Review focus: ${reviewFocus}. Sparring intensity: ${intensity}.${anchor} Respond in ${outputLanguage} as an experienced technical combat-sports coach. Observe visible facts first, identify recurring patterns, explain matchup consequences, and prioritize no more than three corrections. Do not invent exact punch counts, percentages or unsupported certainty. Return ONLY valid JSON: {"summary":"...","strengths":["..."],"priorities":["..."],"opponent":["..."],"plan":["..."],"drills":["..."],"evidence":[{"time":"MM:SS","title":"...","observation":"...","correction":"..."}]}. Never mix languages in one report.`;
+
+  const model = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+  const generated = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
+    method: 'POST',
+    headers: { 'x-goog-api-key': apiKey, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents: [{ parts: [{ text: prompt }, { file_data: { mime_type: mimeType, file_uri: fileUri } }] }],
+      generationConfig: { responseMimeType: 'application/json', temperature: 0.2 },
+    }),
+    cache: 'no-store',
+  });
+  const generatedText = await generated.text();
+  if (!generated.ok) throw new Error(`Gemini rechazó el análisis (${generated.status}).`);
+  const generatedJson = JSON.parse(generatedText) as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> };
+  const text = generatedJson.candidates?.[0]?.content?.parts?.map(part => part.text || '').join('').trim();
+  if (!text) throw new Error('Gemini no devolvió contenido de análisis.');
+  const parsed = cleanGeminiJson(text);
+
+  const stringList = (value: unknown) => Array.isArray(value) ? value.filter(x => typeof x === 'string') as string[] : [];
+  const evidence = Array.isArray(parsed.evidence) ? parsed.evidence.filter(x => x && typeof x === 'object').map(x => {
+    const item = x as Record<string, unknown>;
+    return {
+      time: typeof item.time === 'string' ? item.time : '00:00',
+      title: typeof item.title === 'string' ? item.title : 'Evidencia',
+      observation: typeof item.observation === 'string' ? item.observation : '',
+      correction: typeof item.correction === 'string' ? item.correction : '',
+    };
+  }) : [];
+
+  return {
+    mode: 'real' as const,
+    provider: 'Gemini',
+    usedInReport: true,
+    summary: typeof parsed.summary === 'string' ? parsed.summary : 'Análisis completado con Gemini.',
+    strengths: stringList(parsed.strengths),
+    priorities: stringList(parsed.priorities).slice(0, 3),
+    opponent: stringList(parsed.opponent),
+    plan: stringList(parsed.plan),
+    drills: stringList(parsed.drills),
+    evidence,
+  };
+}
+
 export async function POST(req: NextRequest) {
   try {
+    const contentType = req.headers.get('content-type') || '';
+    if (contentType.includes('application/json')) {
+      const fields = await req.json() as Record<string, unknown>;
+      const uploadId = String(fields.uploadId || '');
+      if (!uploadId) throw new Error('Falta uploadId para el video.');
+      const stored = await uploadFilePath(uploadId);
+      try {
+        return NextResponse.json(await analyzeStoredWithGemini(stored.meta, stored.path, fields));
+      } finally {
+        await removeUpload(uploadId);
+      }
+    }
+
     const source = await req.formData();
     const backend = process.env.FIGHT_AI_API_URL?.replace(/\/$/, '');
 
