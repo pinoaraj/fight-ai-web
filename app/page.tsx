@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 type Evidence = { time: string; title: string; observation: string; correction: string };
 type Report = {
@@ -39,11 +39,21 @@ export default function Home() {
   const [sport, setSport] = useState<'boxing' | 'kickboxing'>('boxing');
   const [stance, setStance] = useState<'orthodox' | 'southpaw' | 'switch'>('orthodox');
   const [report, setReport] = useState<Report | null>(null);
+  const [language, setLanguage] = useState<'es' | 'en'>('es');
+  const [reviewFocus, setReviewFocus] = useState('full');
+  const [intensity, setIntensity] = useState('moderate');
+  const [activeTab, setActiveTab] = useState<'home' | 'sessions' | 'analyze' | 'progress' | 'profile'>('analyze');
+  const [processingStep, setProcessingStep] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const videoUrl = useMemo(() => (video ? URL.createObjectURL(video) : ''), [video]);
+  useEffect(() => {
+    if (!busy) { setProcessingStep(0); return; }
+    const id = setInterval(() => setProcessingStep(v => Math.min(4, v + 1)), 3200);
+    return () => clearInterval(id);
+  }, [busy]);
 
   async function analyze() {
     if (!video) return setError('Selecciona un video antes de analizar.');
@@ -51,7 +61,9 @@ export default function Home() {
     try {
       const body = new FormData();
       body.append('video', video);
-      body.append('language', 'es');
+      body.append('language', language);
+      body.append('review_focus', reviewFocus);
+      body.append('intensity', intensity);
       body.append('sport', sport);
       body.append('stance', stance);
       body.append('athlete_marker', fighter === 'Guantes rojos' ? 'red_gloves' : 'visual_reid');
@@ -91,10 +103,16 @@ export default function Home() {
   return (
     <main>
       <header className="topbar">
+        <div className="mobileSafeBar" />
         <div className="brand"><span className="mark">FA</span><div><b>FIGHT AI</b><small>SPARRING ANALYST</small></div></div>
-        <div className="status"><span className="dot"/> MOTOR LISTO · IA SEGÚN REPORTE</div>
+        <div className="headerRight"><div className="status"><span className="dot"/> MOTOR LISTO · IA SEGÚN REPORTE</div><div className="langToggle"><button className={language === 'es' ? 'active' : ''} onClick={() => setLanguage('es')}>ES</button><button className={language === 'en' ? 'active' : ''} onClick={() => setLanguage('en')}>EN</button></div></div>
       </header>
 
+      <nav className="desktopNav">
+        {[
+          ['home','⌂','Inicio'],['sessions','◷','Sesiones'],['analyze','＋','Analizar'],['progress','↗','Progreso'],['profile','◎','Perfil']
+        ].map(([id,icon,label]) => <button key={id} className={activeTab === id ? 'active' : ''} onClick={() => setActiveTab(id as typeof activeTab)}><span>{icon}</span>{label}</button>)}
+      </nav>
       <section className="hero">
         <div>
           <span className="eyebrow">BOXING · KICKBOXING · STRIKING</span>
@@ -104,7 +122,13 @@ export default function Home() {
         <div className="heroCard"><b>PRINCIPIO DEL PRODUCTO</b><span>Menos métricas inventadas.<br/>Más evidencia visible y acciones concretas.</span></div>
       </section>
 
-      <section className="workspace">
+      {activeTab !== 'analyze' ? <section className="mobileMirrorPanel panel">
+        <span className="eyebrow">{activeTab.toUpperCase()}</span>
+        <h2>{activeTab === 'home' ? (language === 'es' ? '¿Listo para revisar tu sparring?' : 'Ready to review your sparring?') : activeTab === 'sessions' ? (language === 'es' ? 'Sesiones' : 'Sessions') : activeTab === 'progress' ? (language === 'es' ? 'Progreso' : 'Progress') : (language === 'es' ? 'Perfil' : 'Profile')}</h2>
+        <p>{activeTab === 'home' ? (language === 'es' ? 'Revisa hábitos repetidos y define el siguiente objetivo de entrenamiento.' : 'Review recurring habits and define the next training target.') : activeTab === 'sessions' ? (language === 'es' ? 'El historial local seguirá la misma estructura de Android.' : 'Local history follows the same Android structure.') : activeTab === 'progress' ? (language === 'es' ? 'Sin métricas falsas: solo tendencias cuando exista evidencia suficiente.' : 'No fake metrics: only trends when evidence is sufficient.') : (language === 'es' ? 'Preferencias locales de guardia, idioma y disciplina.' : 'Local stance, language and sport preferences.')}</p>
+        {activeTab === 'home' && <button className="primary" onClick={() => setActiveTab('analyze')}>{language === 'es' ? 'ANALIZAR SPARRING' : 'ANALYZE SPARRING'}</button>}
+        <div className="patternGrid"><div className="patternItem"><i className="hot"/><span>Post-combo defense</span><b>FOCUS</b></div><div className="patternItem"><i/><span>Lateral exits</span><b>WATCH</b></div><div className="patternItem"><i/><span>Jab variety</span><b>TRACK</b></div></div>
+      </section> : <section className="workspace">
         <div className="panel uploadPanel">
           <div className="sectionTitle"><span>01</span><div><b>VIDEO</b><small>Selecciona el sparring</small></div></div>
           <input ref={inputRef} hidden type="file" accept="video/*" onChange={e => { setVideo(e.target.files?.[0] || null); setReport(null); }} />
@@ -118,31 +142,39 @@ export default function Home() {
           <div className="fighters">
             {['Guantes rojos','Guantes azules','Otro'].map(x => <button key={x} className={fighter === x ? 'active' : ''} onClick={() => setFighter(x)}>{x}</button>)}
           </div>
+          <div className="mobileSectionLabel">03 · ${language === 'es' ? 'CONFIGURACIÓN' : 'SETUP'}</div>
           <div className="analysisOptions">
             <label>Disciplina<select value={sport} onChange={e => setSport(e.target.value as 'boxing' | 'kickboxing')}><option value="boxing">Boxeo</option><option value="kickboxing">Kickboxing</option></select></label>
             <label>Guardia<select value={stance} onChange={e => setStance(e.target.value as 'orthodox' | 'southpaw' | 'switch')}><option value="orthodox">Ortodoxa</option><option value="southpaw">Zurda</option><option value="switch">Switch</option></select></label>
           </div>
+          <div className="optionBlock"><span>${language === 'es' ? 'Qué quieres priorizar' : 'Review focus'}</span><div className="fighters compact">{[['full','Completo'],['offense','Ataque'],['defense','Defensa'],['footwork','Footwork'],['strategy','Estrategia']].map(([id,label]) => <button key={id} className={reviewFocus === id ? 'active' : ''} onClick={() => setReviewFocus(id)}>{label}</button>)}</div></div>
+          <div className="optionBlock"><span>${language === 'es' ? 'Intensidad' : 'Intensity'}</span><div className="fighters compact">{[['technical','Técnico'],['light','Suave'],['moderate','Moderado'],['hard','Fuerte']].map(([id,label]) => <button key={id} className={intensity === id ? 'active' : ''} onClick={() => setIntensity(id)}>{label}</button>)}</div></div>
           <button className="primary" disabled={busy || !video} onClick={analyze}>{busy ? 'ANALIZANDO…' : 'ANALIZAR SPARRING'}</button>
           <button className="secondary" onClick={() => { setReport(demo); setError(''); }}>VER DEMO DEL REPORTE</button>
-          {busy && <div className="processingNote">El video puede tardar varios minutos. Fight AI mantiene esta pantalla abierta mientras el motor procesa el análisis.</div>}
+          {busy && <div className="processingCard"><div className="spinner"/><b>{language === 'es' ? 'REVISANDO TU SPARRING' : 'REVIEWING YOUR SPARRING'}</b><div className="processingSteps">{['Preparando video','Identificando peleador','Revisando intercambios','Detectando patrones','Generando reporte'].map((x,i)=><span key={x} className={i <= processingStep ? 'done' : ''}><i/>{x}</span>)}</div><small>{language === 'es' ? 'El reporte solo eleva hallazgos con evidencia suficiente.' : 'The report only promotes findings with enough evidence.'}</small></div>}
           {error && <div className="error">{error}</div>}
         </div>
 
         <div className="panel reportPanel">
           {!report ? <div className="empty"><span>03</span><h2>Tu reporte aparecerá aquí</h2><p>Los timestamps serán clickeables para volver al momento exacto del video.</p></div> : (
             <>
-              <div className="reportHead"><div><span className="eyebrow">REPORTE DE COACHING</span><h2>{fighter}</h2></div><div className={report.usedInReport ? 'aiBadge on' : 'aiBadge'}>{report.usedInReport ? `${report.provider} · USADO` : report.mode === 'demo' ? 'DEMO UI · IA NO USADA' : `${report.provider} · NO USADO`}</div></div>
+              <div className="reportHead"><div><span className="eyebrow">REPORTE DE COACHING</span><h2>{fighter}</h2></div><div className={report.usedInReport ? 'aiBadge on' : 'aiBadge'}><b>{report.provider}</b><small>{report.usedInReport ? (language === 'es' ? 'USADO EN REPORTE' : 'USED IN REPORT') : (language === 'es' ? 'NO USADO' : 'NOT USED')}</small></div></div>
               <p className="summary">{report.summary}</p>
               <div className="grid3">
                 <Card title="FORTALEZAS" items={report.strengths}/><Card title="PRIORIDADES" items={report.priorities}/><Card title="RIVAL" items={report.opponent}/>
               </div>
               <div className="strategy"><div><h3>PLAN TÁCTICO</h3>{report.plan.map((x,i)=><p key={x}><b>0{i+1}</b>{x}</p>)}</div><div><h3>DRILLS</h3>{report.drills.map(x=><p key={x}>{x}</p>)}</div></div>
-              <h3 className="evidenceTitle">EVIDENCIA</h3>
+              <div className="visualCoach"><div><span className="eyebrow">${language === 'es' ? 'COACH VISUAL' : 'VISUAL COACH'}</span><h3>${language === 'es' ? 'Corrección en movimiento' : 'Movement correction'}</h3><p>${language === 'es' ? 'Secuencia simplificada ligada a la corrección prioritaria.' : 'Simplified sequence tied to the priority correction.'}</p></div><div className="visualSequence"><span>GUARD</span><b>→</b><span>ANGLE</span><b>→</b><span>EXIT</span></div><div className="trajectory"><i/><i/><i/><strong>↗</strong></div></div>
+              <div className="reportActions"><button onClick={() => navigator.share?.({title:'Fight AI',text:report.summary})}>${language === 'es' ? 'COMPARTIR' : 'SHARE'}</button><button onClick={() => window.print()}>PDF</button></div>
+              <h3 className="evidenceTitle">${language === 'es' ? 'EVIDENCIA DEL MOTOR' : 'ENGINE EVIDENCE'}</h3>
               <div className="evidence">{report.evidence.map(e => <button key={e.time+e.title} onClick={() => jump(e.time)}><time>{e.time}</time><div><b>{e.title}</b><span>{e.observation}</span><small>Corrección: {e.correction}</small></div></button>)}</div>
             </>
           )}
         </div>
-      </section>
+      </section>}
+      <nav className="bottomNav">{[
+        ['home','⌂','Inicio'],['sessions','◷','Sesiones'],['analyze','＋','Analizar'],['progress','↗','Progreso'],['profile','◎','Perfil']
+      ].map(([id,icon,label]) => <button key={id} className={activeTab === id ? 'active' : ''} onClick={() => setActiveTab(id as typeof activeTab)}><span>{icon}</span><small>{label}</small></button>)}</nav>
       <footer>Fight AI · Herramienta de apoyo técnico. No reemplaza a un entrenador.</footer>
     </main>
   );
