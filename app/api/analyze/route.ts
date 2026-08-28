@@ -147,10 +147,14 @@ async function analyzeWithGemini(source: FormData) {
   }
   if (state !== 'ACTIVE') throw new Error('Gemini todavía no termina de preparar el video.');
 
-  const target = String(source.get('glove_color') || source.get('athlete_marker') || 'peleador seleccionado');
+  const target = String(source.get('glove_color') || source.get('athlete_marker') || 'selected fighter');
   const sport = String(source.get('sport') || 'boxing');
   const stance = String(source.get('stance') || 'unknown');
-  const prompt = `Analiza este video de sparring de ${sport}. Evalúa SOLO al peleador objetivo: ${target}. Guardia declarada: ${stance}. Responde en español como coach técnico. No inventes conteos exactos de golpes ni estadísticas que el video no permita verificar. Separa observaciones visibles de hipótesis tácticas. Devuelve SOLO JSON válido con esta forma: {"summary":"...","strengths":["..."],"priorities":["..."],"opponent":["..."],"plan":["..."],"drills":["..."],"evidence":[{"time":"MM:SS","title":"...","observation":"...","correction":"..."}]}. Usa timestamps solo cuando tengas evidencia visible. Máximo 3 prioridades principales y recomendaciones accionables.`;
+  const language = String(source.get('language') || 'es');
+  const reviewFocus = String(source.get('review_focus') || 'full');
+  const intensity = String(source.get('intensity') || 'moderate');
+  const outputLanguage = language === 'en' ? 'English' : 'Spanish';
+  const prompt = `Analyze this ${sport} sparring video. Evaluate ONLY the target fighter: ${target}. Declared stance: ${stance}. Review focus: ${reviewFocus}. Sparring intensity: ${intensity}. Respond in ${outputLanguage} as a technical combat-sports coach. No inventes conteos exactos de golpes ni estadísticas que el video no permita verificar. Separa observaciones visibles de hipótesis tácticas. Devuelve SOLO JSON válido con esta forma: {"summary":"...","strengths":["..."],"priorities":["..."],"opponent":["..."],"plan":["..."],"drills":["..."],"evidence":[{"time":"MM:SS","title":"...","observation":"...","correction":"..."}]}. Usa timestamps solo cuando tengas evidencia visible. Return ONLY valid JSON with the requested schema. Never mix languages in one report. Maximum 3 main priorities and make every recommendation actionable.`;
   const model = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
   const generated = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
     method: 'POST',
