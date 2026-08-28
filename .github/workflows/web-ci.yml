@@ -40,6 +40,9 @@ jobs:
             sleep 1
           done
           node qa/web-mobile-agent.mjs
+          kill $WEB_PID >/dev/null 2>&1 || true
+          pkill -f "next-server" >/dev/null 2>&1 || true
+          trap - EXIT
       - name: Shared-backend adapter + web runtime QA
         run: |
           set -euo pipefail
