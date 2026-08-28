@@ -16,8 +16,7 @@ $TrustPath = Join-Path $env:TEMP 'fight-ai-oidc-trust-fixed.json'
       "Condition": {
         "StringEquals": {"token.actions.githubusercontent.com:aud": "sts.amazonaws.com"},
         "StringLike": {"token.actions.githubusercontent.com:sub": [
-          "repo:pinoaraj@132783424/fight-ai@1348995885:ref:refs/heads/web/mvp",
-          "repo:pinoaraj@132783424/fight-ai@1348995885:ref:refs/heads/main"
+          "repo:pinoaraj@132783424/fight-ai-web@1350097982:ref:refs/heads/main"
         ]}
       }
     }
@@ -49,5 +48,5 @@ if ($LASTEXITCODE -ne 0) { throw 'Failed to update FightAIWebDeploy permissions.
 
 Write-Host ''
 Write-Host 'Fight AI OIDC trust VERIFIED.' -ForegroundColor Green
-Write-Host 'Subject: repo:pinoaraj@132783424/fight-ai@1348995885:ref:refs/heads/web/mvp'
-Write-Host 'GitHub deploy role has scoped SSM permissions for the Gemini SecureString runtime parameter.'
+Write-Host 'Subject: repo:pinoaraj@132783424/fight-ai-web@1350097982:ref:refs/heads/main'
+Write-Host 'GitHub deploy role trust now targets the dedicated fight-ai-web main branch.'
