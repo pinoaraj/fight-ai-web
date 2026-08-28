@@ -2,12 +2,12 @@ name: Web MVP CI
 
 on:
   push:
-    branches: [web/mvp]
+    branches: [main]
   pull_request:
     branches: [main]
 
 concurrency:
-  group: web-mvp-${{ github.ref }}
+  group: fight-ai-web-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
