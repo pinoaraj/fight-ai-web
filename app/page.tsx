@@ -142,13 +142,13 @@ export default function Home() {
           <div className="fighters">
             {['Guantes rojos','Guantes azules','Otro'].map(x => <button key={x} className={fighter === x ? 'active' : ''} onClick={() => setFighter(x)}>{x}</button>)}
           </div>
-          <div className="mobileSectionLabel">03 · ${language === 'es' ? 'CONFIGURACIÓN' : 'SETUP'}</div>
+          <div className="mobileSectionLabel">03 · {language === 'es' ? 'CONFIGURACIÓN' : 'SETUP'}</div>
           <div className="analysisOptions">
             <label>Disciplina<select value={sport} onChange={e => setSport(e.target.value as 'boxing' | 'kickboxing')}><option value="boxing">Boxeo</option><option value="kickboxing">Kickboxing</option></select></label>
             <label>Guardia<select value={stance} onChange={e => setStance(e.target.value as 'orthodox' | 'southpaw' | 'switch')}><option value="orthodox">Ortodoxa</option><option value="southpaw">Zurda</option><option value="switch">Switch</option></select></label>
           </div>
-          <div className="optionBlock"><span>${language === 'es' ? 'Qué quieres priorizar' : 'Review focus'}</span><div className="fighters compact">{[['full','Completo'],['offense','Ataque'],['defense','Defensa'],['footwork','Footwork'],['strategy','Estrategia']].map(([id,label]) => <button key={id} className={reviewFocus === id ? 'active' : ''} onClick={() => setReviewFocus(id)}>{label}</button>)}</div></div>
-          <div className="optionBlock"><span>${language === 'es' ? 'Intensidad' : 'Intensity'}</span><div className="fighters compact">{[['technical','Técnico'],['light','Suave'],['moderate','Moderado'],['hard','Fuerte']].map(([id,label]) => <button key={id} className={intensity === id ? 'active' : ''} onClick={() => setIntensity(id)}>{label}</button>)}</div></div>
+          <div className="optionBlock"><span>{language === 'es' ? 'Qué quieres priorizar' : 'Review focus'}</span><div className="fighters compact">{[['full','Completo'],['offense','Ataque'],['defense','Defensa'],['footwork','Footwork'],['strategy','Estrategia']].map(([id,label]) => <button key={id} className={reviewFocus === id ? 'active' : ''} onClick={() => setReviewFocus(id)}>{label}</button>)}</div></div>
+          <div className="optionBlock"><span>{language === 'es' ? 'Intensidad' : 'Intensity'}</span><div className="fighters compact">{[['technical','Técnico'],['light','Suave'],['moderate','Moderado'],['hard','Fuerte']].map(([id,label]) => <button key={id} className={intensity === id ? 'active' : ''} onClick={() => setIntensity(id)}>{label}</button>)}</div></div>
           <button className="primary" disabled={busy || !video} onClick={analyze}>{busy ? 'ANALIZANDO…' : 'ANALIZAR SPARRING'}</button>
           <button className="secondary" onClick={() => { setReport(demo); setError(''); }}>VER DEMO DEL REPORTE</button>
           {busy && <div className="processingCard"><div className="spinner"/><b>{language === 'es' ? 'REVISANDO TU SPARRING' : 'REVIEWING YOUR SPARRING'}</b><div className="processingSteps">{['Preparando video','Identificando peleador','Revisando intercambios','Detectando patrones','Generando reporte'].map((x,i)=><span key={x} className={i <= processingStep ? 'done' : ''}><i/>{x}</span>)}</div><small>{language === 'es' ? 'El reporte solo eleva hallazgos con evidencia suficiente.' : 'The report only promotes findings with enough evidence.'}</small></div>}
@@ -164,9 +164,9 @@ export default function Home() {
                 <Card title="FORTALEZAS" items={report.strengths}/><Card title="PRIORIDADES" items={report.priorities}/><Card title="RIVAL" items={report.opponent}/>
               </div>
               <div className="strategy"><div><h3>PLAN TÁCTICO</h3>{report.plan.map((x,i)=><p key={x}><b>0{i+1}</b>{x}</p>)}</div><div><h3>DRILLS</h3>{report.drills.map(x=><p key={x}>{x}</p>)}</div></div>
-              <div className="visualCoach"><div><span className="eyebrow">${language === 'es' ? 'COACH VISUAL' : 'VISUAL COACH'}</span><h3>${language === 'es' ? 'Corrección en movimiento' : 'Movement correction'}</h3><p>${language === 'es' ? 'Secuencia simplificada ligada a la corrección prioritaria.' : 'Simplified sequence tied to the priority correction.'}</p></div><div className="visualSequence"><span>GUARD</span><b>→</b><span>ANGLE</span><b>→</b><span>EXIT</span></div><div className="trajectory"><i/><i/><i/><strong>↗</strong></div></div>
-              <div className="reportActions"><button onClick={() => navigator.share?.({title:'Fight AI',text:report.summary})}>${language === 'es' ? 'COMPARTIR' : 'SHARE'}</button><button onClick={() => window.print()}>PDF</button></div>
-              <h3 className="evidenceTitle">${language === 'es' ? 'EVIDENCIA DEL MOTOR' : 'ENGINE EVIDENCE'}</h3>
+              <div className="visualCoach"><div><span className="eyebrow">{language === 'es' ? 'COACH VISUAL' : 'VISUAL COACH'}</span><h3>{language === 'es' ? 'Corrección en movimiento' : 'Movement correction'}</h3><p>{language === 'es' ? 'Secuencia simplificada ligada a la corrección prioritaria.' : 'Simplified sequence tied to the priority correction.'}</p></div><div className="visualSequence"><span>GUARD</span><b>→</b><span>ANGLE</span><b>→</b><span>EXIT</span></div><div className="trajectory"><i/><i/><i/><strong>↗</strong></div></div>
+              <div className="reportActions"><button onClick={() => navigator.share?.({title:'Fight AI',text:report.summary})}>{language === 'es' ? 'COMPARTIR' : 'SHARE'}</button><button onClick={() => window.print()}>PDF</button></div>
+              <h3 className="evidenceTitle">{language === 'es' ? 'EVIDENCIA DEL MOTOR' : 'ENGINE EVIDENCE'}</h3>
               <div className="evidence">{report.evidence.map(e => <button key={e.time+e.title} onClick={() => jump(e.time)}><time>{e.time}</time><div><b>{e.title}</b><span>{e.observation}</span><small>Corrección: {e.correction}</small></div></button>)}</div>
             </>
           )}
