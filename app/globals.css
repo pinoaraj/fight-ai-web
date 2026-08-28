@@ -66,3 +66,5 @@ footer{border-top:1px solid var(--line);padding:22px 24px;color:#65707b;text-ali
 }
 @media(max-width:420px){.hero h1{font-size:30px}.analysisOptions{grid-template-columns:1fr}.visualSequence{gap:4px}.visualSequence span{font-size:8px;padding:6px 7px}}
 @media print{.topbar,.desktopNav,.bottomNav,.uploadPanel,.hero,footer,.reportActions{display:none!important}.workspace{display:block;padding:0}.reportPanel{border:0;box-shadow:none;padding:0;background:#fff;color:#111}.card,.strategy>div,.visualCoach{break-inside:avoid;background:#fff;color:#111;border-color:#bbb}}
+
+.uploadMeter{position:relative;height:10px;border-radius:999px;background:#20262e;overflow:hidden;margin:2px 0 4px}.uploadMeter>span{display:block;height:100%;background:var(--accent);border-radius:inherit;transition:width .18s ease}.uploadMeter>b{position:absolute;right:6px;top:50%;transform:translateY(-50%);font-size:7px;color:#0c1007;mix-blend-mode:multiply}
