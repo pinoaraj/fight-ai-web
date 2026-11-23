@@ -7,6 +7,26 @@ export const dynamic = 'force-dynamic';
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
+async function retryWithBackoff<T>(fn: () => Promise<T>, maxRetries = 4, baseDelayMs = 2000): Promise<T> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (e) {
+      lastError = e;
+      if (attempt === maxRetries) break;
+      // Gemini busy/rate-limit errors: 429, 503, or "overloaded" in message
+      const msg = e instanceof Error ? e.message : String(e);
+      const isTransient = msg.includes('429') || msg.includes('503') || msg.includes('overloaded') || msg.includes('temporarily');
+      if (!isTransient) throw e;
+      const delay = baseDelayMs * Math.pow(2, attempt);
+      console.warn(`[gemini-retry] attempt ${attempt + 1}/${maxRetries} failed (${msg}), retrying in ${delay}ms`);
+      await sleep(delay);
+    }
+  }
+  throw lastError;
+}
+
 function secondsToClock(value: number) {
   const total = Math.max(0, Math.round(value));
   const minutes = Math.floor(total / 60);
@@ -139,36 +159,61 @@ async function analyzeWithGemini(source: FormData) {
   for (let i = 0; i < 40 && state !== 'ACTIVE'; i += 1) {
     if (state === 'FAILED') throw new Error('Gemini no pudo procesar el video.');
     await sleep(1500);
-    const status = await fetch(`https://generativelanguage.googleapis.com/v1beta/${fileName}`, {
-      headers: { 'x-goog-api-key': apiKey },
-      cache: 'no-store',
-    });
-    if (!status.ok) throw new Error(`No se pudo consultar el estado del video en Gemini (${status.status}).`);
+    const status = await retryWithBackoff(async () => {
+      const status = await fetch(`https://generativelanguage.googleapis.com/v1beta/${fileName}`, {
+        headers: { 'x-goog-api-key': apiKey },
+        cache: 'no-store',
+      });
+      if (!status.ok) throw new Error(`No se pudo consultar el estado del video en Gemini (${status.status}).`);
+      return status;
+    }, 2, 1000);
     const statusJson = await status.json() as { state?: string };
     state = statusJson.state || 'PROCESSING';
   }
   if (state !== 'ACTIVE') throw new Error('Gemini todavía no termina de preparar el video.');
 
-  const target = String(source.get('glove_color') || source.get('athlete_marker') || 'selected fighter');
+  let target = source.get('fighter_description') || source.get('glove_color') || source.get('athlete_marker') || 'selected fighter';
+  if ((target === 'red_gloves' || target === 'blue_gloves' || target === 'visual_reid') && source.get('fighter_description')) {
+    target = `${target} (${source.get('fighter_description')})`.trim();
+  }
   const sport = String(source.get('sport') || 'boxing');
   const stance = String(source.get('stance') || 'unknown');
   const language = String(source.get('language') || 'es');
   const reviewFocus = String(source.get('review_focus') || 'full');
   const intensity = String(source.get('intensity') || 'moderate');
+  const fighterDescription = source.get('fighter_description') ? String(source.get('fighter_description')) : '';
+  const fighterAnchorX = source.get('fighter_anchor_x') !== '' ? String(source.get('fighter_anchor_x')) : '';
+  const fighterAnchorY = source.get('fighter_anchor_y') !== '' ? String(source.get('fighter_anchor_y')) : '';
+  const topColor = source.get('top_color') ? String(source.get('top_color')) : '';
+  const relativeHeight = source.get('relative_height') ? String(source.get('relative_height')) : '';
+  const build = source.get('build') ? String(source.get('build')) : '';
+  const anchors = [fighterDescription && `Physical description: "${fighterDescription}"`, fighterAnchorX && `Visual anchor at normalized coordinates (x=${fighterAnchorX}, y=${fighterAnchorY})`, topColor && `Shirt color: ${topColor}`, relativeHeight && `Relative height: ${relativeHeight}`, build && `Build/physique: ${build}`].filter(Boolean).join('; ');
+  const descriptorText = anchors ? ` Focus on these visual identifiers for the target fighter: ${anchors}.` : '';
   const outputLanguage = language === 'en' ? 'English' : 'Spanish';
-  const prompt = `Analyze this ${sport} sparring video. Evaluate ONLY the target fighter: ${target}. Declared stance: ${stance}. Review focus: ${reviewFocus}. Sparring intensity: ${intensity}. Respond in ${outputLanguage} as a technical combat-sports coach. No inventes conteos exactos de golpes ni estadísticas que el video no permita verificar. Separa observaciones visibles de hipótesis tácticas. Devuelve SOLO JSON válido con esta forma: {"summary":"...","strengths":["..."],"priorities":["..."],"opponent":["..."],"plan":["..."],"drills":["..."],"evidence":[{"time":"MM:SS","title":"...","observation":"...","correction":"..."}]}. Usa timestamps solo cuando tengas evidencia visible. Return ONLY valid JSON with the requested schema. Never mix languages in one report. Maximum 3 main priorities and make every recommendation actionable.`;
+  const prompt = `Analyze this ${sport} sparring video. There may be multiple people or pairs in the frame; you MUST identify and evaluate ONLY the specific target fighter described here: ${target}.${descriptorText} Declared stance: ${stance}. Review focus: ${reviewFocus}. Sparring intensity: ${intensity}.
+
+Instructions:
+1. First, use the visual anchor and descriptors to locate the correct fighter among any other people present.
+2. Analyze their technical performance and tactical patterns relative to their immediate opponent using the specific methodologies of Frolov Boxing School, True Boxer Stance, Coach Keith Keppner, and Школа бокса Фралова.
+3. Respond in ${outputLanguage} as an experienced technical combat-sports coach who applies these schools' principles—do not give generic advice like "keep your hands up" without explaining the exact context and consequence.
+4. Do not invent exact punch counts or statistics.
+5. Return ONLY valid JSON: {"summary":"...","strengths":["..."],"priorities":["..."],"opponent":["..."],"plan":["..."],"drills":["..."],"evidence":[{"time":"MM:SS","title":"...","observation":"...","correction":"..."}]}.
+Maximum 3 main priorities. Make every recommendation actionable, contextual and grounded in visible evidence.`;
   const model = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
-  const generated = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
-    method: 'POST',
-    headers: { 'x-goog-api-key': apiKey, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: prompt }, { file_data: { mime_type: mimeType, file_uri: fileUri } }] }],
-      generationConfig: { responseMimeType: 'application/json', temperature: 0.2 },
-    }),
-    cache: 'no-store',
+  const generatedText = await retryWithBackoff(async () => {
+    const generated = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
+      method: 'POST',
+      headers: { 'x-goog-api-key': apiKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }, { file_data: { mime_type: mimeType, file_uri: fileUri } }] }],
+        generationConfig: { responseMimeType: 'application/json', temperature: 0.2 },
+      }),
+      cache: 'no-store',
+    });
+    const text = await generated.text();
+    if (!generated.ok) throw new Error(`Gemini rechazó el análisis (${generated.status}).`);
+    return text;
   });
-  const generatedText = await generated.text();
-  if (!generated.ok) throw new Error(`Gemini rechazó el análisis (${generated.status}).`);
   const generatedJson = JSON.parse(generatedText) as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> };
   const text = generatedJson.candidates?.[0]?.content?.parts?.map(part => part.text || '').join('').trim();
   if (!text) throw new Error('Gemini no devolvió contenido de análisis.');
@@ -245,40 +290,64 @@ async function analyzeStoredWithGemini(meta: UploadMeta, filePath: string, field
   for (let i = 0; i < 80 && state !== 'ACTIVE'; i += 1) {
     if (state === 'FAILED') throw new Error('Gemini no pudo procesar el video.');
     await sleep(1500);
-    const status = await fetch(`https://generativelanguage.googleapis.com/v1beta/${fileName}`, {
-      headers: { 'x-goog-api-key': apiKey },
-      cache: 'no-store',
-    });
-    if (!status.ok) throw new Error(`No se pudo consultar el estado del video en Gemini (${status.status}).`);
+    const status = await retryWithBackoff(async () => {
+      const status = await fetch(`https://generativelanguage.googleapis.com/v1beta/${fileName}`, {
+        headers: { 'x-goog-api-key': apiKey },
+        cache: 'no-store',
+      });
+      if (!status.ok) throw new Error(`No se pudo consultar el estado del video en Gemini (${status.status}).`);
+      return status;
+    }, 2, 1000);
     const statusJson = await status.json() as { state?: string };
     state = statusJson.state || 'PROCESSING';
   }
   if (state !== 'ACTIVE') throw new Error('Gemini todavía no termina de preparar el video.');
 
-  const target = String(fields.glove_color || fields.athlete_marker || fields.fighter_description || 'selected fighter');
+  let target = fields.fighter_description || fields.glove_color || fields.athlete_marker || 'selected fighter';
+
+  // If target is a generic glove marker, add description context if available
+  if ((target === 'red_gloves' || target === 'blue_gloves' || target === 'visual_reid') && fields.fighter_description) {
+    target = `${target} (${fields.fighter_description})`.trim();
+  }
   const sport = String(fields.sport || 'boxing');
   const stance = String(fields.stance || 'unknown');
   const language = String(fields.language || 'es');
   const reviewFocus = String(fields.review_focus || 'full');
   const intensity = String(fields.intensity || 'moderate');
-  const anchor = fields.fighter_anchor_x && fields.fighter_anchor_y
-    ? ` Visual anchor normalized coordinates: x=${fields.fighter_anchor_x}, y=${fields.fighter_anchor_y}.`
-    : '';
+  const fighterDescription = fields.fighter_description ? String(fields.fighter_description) : '';
+  const fighterAnchorX = fields.fighter_anchor_x !== undefined && fields.fighter_anchor_x !== null ? String(fields.fighter_anchor_x).trim() : '';
+  const fighterAnchorY = fields.fighter_anchor_y !== undefined && fields.fighter_anchor_y !== null ? String(fields.fighter_anchor_y).trim() : '';
+  const topColor = fields.top_color ? String(fields.top_color) : '';
+  const relativeHeight = fields.relative_height ? String(fields.relative_height) : '';
+  const build = fields.build ? String(fields.build) : '';
+  const anchors = [fighterDescription && `Physical description: "${fighterDescription}"`, fighterAnchorX && `Visual anchor at normalized coordinates (x=${fighterAnchorX}, y=${fighterAnchorY})`, topColor && `Shirt color: ${topColor}`, relativeHeight && `Relative height: ${relativeHeight}`, build && `Build/physique: ${build}`].filter(Boolean).join('; ');
+  const descriptorText = anchors ? ` Focus on these visual identifiers for the target fighter: ${anchors}.` : '';
   const outputLanguage = language === 'en' ? 'English' : 'Spanish';
-  const prompt = `Analyze this ${sport} sparring video. Evaluate ONLY the target fighter: ${target}. Declared stance: ${stance}. Review focus: ${reviewFocus}. Sparring intensity: ${intensity}.${anchor} Respond in ${outputLanguage} as an experienced technical combat-sports coach. Observe visible facts first, identify recurring patterns, explain matchup consequences, and prioritize no more than three corrections. Do not invent exact punch counts, percentages or unsupported certainty. Return ONLY valid JSON: {"summary":"...","strengths":["..."],"priorities":["..."],"opponent":["..."],"plan":["..."],"drills":["..."],"evidence":[{"time":"MM:SS","title":"...","observation":"...","correction":"..."}]}. Never mix languages in one report.`;
+  const prompt = `Analyze this ${sport} sparring video. There may be multiple people or pairs in the frame; you MUST identify and evaluate ONLY the specific target fighter described here: ${target}.${descriptorText} Declared stance: ${stance}. Review focus: ${reviewFocus}. Sparring intensity: ${intensity}.
+
+Instructions:
+1. First, use the visual anchor and descriptors to locate the correct fighter among any other people present.
+2. Analyze the target fighter's technical performance and tactical patterns relative to their immediate opponent.
+3. Respond in ${outputLanguage} as an experienced technical combat-sports coach.
+4. Do not invent exact punch counts or statistics.
+5. Return ONLY valid JSON: {"summary":"...","strengths":["..."],"priorities":["..."],"opponent":["..."],"plan":["..."],"drills":["..."],"evidence":[{"time":"MM:SS","title":"...","observation":"...","correction":"..."}]}.
+Maximum 3 main priorities. Make every recommendation actionable.`;
 
   const model = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
-  const generated = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
-    method: 'POST',
-    headers: { 'x-goog-api-key': apiKey, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: prompt }, { file_data: { mime_type: mimeType, file_uri: fileUri } }] }],
-      generationConfig: { responseMimeType: 'application/json', temperature: 0.2 },
-    }),
-    cache: 'no-store',
+  const generatedText = await retryWithBackoff(async () => {
+    const generated = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
+      method: 'POST',
+      headers: { 'x-goog-api-key': apiKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }, { file_data: { mime_type: mimeType, file_uri: fileUri } }] }],
+        generationConfig: { responseMimeType: 'application/json', temperature: 0.2 },
+      }),
+      cache: 'no-store',
+    });
+    const text = await generated.text();
+    if (!generated.ok) throw new Error(`Gemini rechazó el análisis (${generated.status}).`);
+    return text;
   });
-  const generatedText = await generated.text();
-  if (!generated.ok) throw new Error(`Gemini rechazó el análisis (${generated.status}).`);
   const generatedJson = JSON.parse(generatedText) as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> };
   const text = generatedJson.candidates?.[0]?.content?.parts?.map(part => part.text || '').join('').trim();
   if (!text) throw new Error('Gemini no devolvió contenido de análisis.');

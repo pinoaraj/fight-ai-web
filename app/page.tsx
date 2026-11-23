@@ -16,6 +16,18 @@ type Report = {
   evidence: Evidence[];
 };
 
+type FighterDescriptor = {
+  preset?: 'red_gloves' | 'blue_gloves';
+  glove_color?: 'red' | 'blue' | '';
+  top_color?: string;
+  relative_height?: 'shorter' | 'similar' | 'taller';
+  build?: 'lean' | 'average' | 'stocky';
+  stance?: 'orthodox' | 'southpaw' | 'switch';
+  anchor_x?: number;
+  anchor_y?: number;
+  description?: string;
+};
+
 const demo: Report = {
   mode: 'demo',
   provider: 'Sin proveedor',
@@ -46,6 +58,9 @@ export default function Home() {
   const [processingStep, setProcessingStep] = useState(0);
   const [fighterAnchor, setFighterAnchor] = useState<{x:number;y:number}|null>(null);
   const [fighterDescription, setFighterDescription] = useState('');
+  const [fighterTopColor, setFighterTopColor] = useState('');
+  const [fighterRelativeHeight, setFighterRelativeHeight] = useState<'shorter' | 'similar' | 'taller'>('similar');
+  const [fighterBuild, setFighterBuild] = useState<'lean' | 'average' | 'stocky'>('average');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -101,6 +116,9 @@ export default function Home() {
         stance,
         athlete_marker: fighter === 'Guantes rojos' ? 'red_gloves' : fighter === 'Guantes azules' ? 'blue_gloves' : 'visual_reid',
         glove_color: fighter === 'Guantes rojos' ? 'red' : fighter === 'Guantes azules' ? 'blue' : '',
+        top_color: fighterTopColor,
+        relative_height: fighterRelativeHeight,
+        build: fighterBuild,
       };
 
       let response: Response;
@@ -195,6 +213,39 @@ export default function Home() {
             {['Guantes rojos','Guantes azules','Otro'].map(x => <button key={x} className={fighter === x ? 'active' : ''} onClick={() => { setFighter(x); if (x !== 'Otro') setFighterAnchor(null); }}>{x}</button>)}
           </div>
           {fighter === 'Otro' && <div className="fighterReid"><p>{language === 'es' ? 'Pausa el video y toca al peleador para crear un ancla visual. Agrega una descripción para reforzar la re-identificación.' : 'Pause the video and tap the fighter to create a visual anchor. Add a description to reinforce re-identification.'}</p><input value={fighterDescription} onChange={e => setFighterDescription(e.target.value)} placeholder={language === 'es' ? 'Ej: polera negra, más bajo, ortodoxo' : 'Ex: black shirt, shorter, orthodox'}/></div>}
+          {fighter !== 'Otro' && (
+            <div className="fighterReid" style={{marginTop: '10px'}}>
+              <p style={{fontSize: '11px', lineHeight: '1.5', color: 'var(--muted)', margin: '0 0 9px'}}>{language === 'es' ? 'Descriptores visuales opcionales para reforzar la re-identificación del peleador.' : 'Optional visual descriptors to reinforce fighter re-identification.'}</p>
+              <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px'}}>
+                <div>
+                  <label style={{display: 'flex', flexDirection: 'column', gap: '7px', color: 'var(--muted)', fontSize: '10px', fontWeight: '700', letterSpacing: '.05em'}}>
+                    {language === 'es' ? 'Color de polera' : 'Shirt color'}
+                    <input value={fighterTopColor} onChange={e => setFighterTopColor(e.target.value)} placeholder={language === 'es' ? 'Ej: negro, blanco, azul' : 'Ex: black, white, blue'} style={{width: '100%', appearance: 'none', background: 'var(--surface-2)', border: '1px solid var(--line)', color: 'var(--text)', padding: '11px 12px', borderRadius: '11px', fontSize: '12px'}} />
+                  </label>
+                </div>
+                <div>
+                  <label style={{display: 'flex', flexDirection: 'column', gap: '7px', color: 'var(--muted)', fontSize: '10px', fontWeight: '700', letterSpacing: '.05em'}}>
+                    {language === 'es' ? 'Altura relativa' : 'Relative height'}
+                    <select value={fighterRelativeHeight} onChange={e => setFighterRelativeHeight(e.target.value as 'shorter' | 'similar' | 'taller')} style={{width: '100%', appearance: 'none', background: 'var(--surface-2)', border: '1px solid var(--line)', color: 'var(--text)', padding: '11px 34px 11px 12px', borderRadius: '11px', fontSize: '12px', backgroundImage: 'linear-gradient(45deg,transparent 50%,#7e8995 50%),linear-gradient(135deg,#7e8995 50%,transparent 50%)', backgroundPosition: 'calc(100% - 16px) 50%,calc(100% - 11px) 50%', backgroundSize: '5px 5px,5px 5px', backgroundRepeat: 'no-repeat'}}>
+                      <option value="shorter">{language === 'es' ? 'Más bajo' : 'Shorter'}</option>
+                      <option value="similar">{language === 'es' ? 'Similar' : 'Similar'}</option>
+                      <option value="taller">{language === 'es' ? 'Más alto' : 'Taller'}</option>
+                    </select>
+                  </label>
+                </div>
+                <div>
+                  <label style={{display: 'flex', flexDirection: 'column', gap: '7px', color: 'var(--muted)', fontSize: '10px', fontWeight: '700', letterSpacing: '.05em'}}>
+                    {language === 'es' ? 'Complexión' : 'Build'}
+                    <select value={fighterBuild} onChange={e => setFighterBuild(e.target.value as 'lean' | 'average' | 'stocky')} style={{width: '100%', appearance: 'none', background: 'var(--surface-2)', border: '1px solid var(--line)', color: 'var(--text)', padding: '11px 34px 11px 12px', borderRadius: '11px', fontSize: '12px', backgroundImage: 'linear-gradient(45deg,transparent 50%,#7e8995 50%),linear-gradient(135deg,#7e8995 50%,transparent 50%)', backgroundPosition: 'calc(100% - 16px) 50%,calc(100% - 11px) 50%', backgroundSize: '5px 5px,5px 5px', backgroundRepeat: 'no-repeat'}}>
+                      <option value="lean">{language === 'es' ? 'Delgado' : 'Lean'}</option>
+                      <option value="average">{language === 'es' ? 'Promedio' : 'Average'}</option>
+                      <option value="stocky">{language === 'es' ? 'Compacto' : 'Stocky'}</option>
+                    </select>
+                  </label>
+                </div>
+              </div>
+            </div>
+          )}
           <div className="mobileSectionLabel">03 · {language === 'es' ? 'CONFIGURACIÓN' : 'SETUP'}</div>
           <div className="analysisOptions">
             <label>Disciplina<select value={sport} onChange={e => setSport(e.target.value as 'boxing' | 'kickboxing')}><option value="boxing">Boxeo</option><option value="kickboxing">Kickboxing</option></select></label>

@@ -176,6 +176,9 @@ AWS Secrets Manager and SSM Parameter Store both currently return `SubscriptionR
 ## 12. Current workstreams
 1. `qa/cloud-android`: close authenticated Gemini + Android virtual-agent release gates and preserve Android as the canonical product-flow reference.
 2. `web/mvp`: replace the simplified MVP presentation with Android-parity upload → fighter selection → analysis options → processing → report → evidence/visuals → PDF flow.
+   - **Implemented:** Enhanced fighter identification with visual descriptors (shirt color, relative height, build, anchor coordinates).
+   - **Implemented:** Improved Gemini prompt for "clinical eye" analysis, including multi-fighter disambiguation and referencing specific coaching methodologies (Frolov Boxing School, True Boxer Stance, Coach Keith Keppner, Школа бокса Фралова).
+   - **Implemented:** Added exponential backoff retry logic for Gemini API calls to handle temporary busy/rate-limit errors.
 3. Harden large-video ingestion so real sparring files do not rely on one memory-heavy synchronous request; add persistent runtime logging.
 4. Deploy/connect the shared CV/Pose analysis backend so mobile and web use the same full engine rather than relying on the web Gemini fallback.
 5. Keep both clients aligned to this Grapify spec and the same report contract.
