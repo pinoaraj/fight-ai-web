@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createReadStream } from 'node:fs';
 import { removeUpload, uploadFilePath, type UploadMeta } from '../../../lib/upload-store';
+import type { Report } from '@/lib/types';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -42,7 +43,7 @@ function textOf(item: unknown) {
   return [title, description].filter(Boolean).join(': ');
 }
 
-function normalizeReport(raw: unknown) {
+function normalizeReport(raw: unknown): Report {
   const a = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
   const strengthsRaw = Array.isArray(a.strengths) ? a.strengths : [];
   const weaknessesRaw = Array.isArray(a.weaknesses) ? a.weaknesses : [];
@@ -111,7 +112,7 @@ function cleanGeminiJson(text: string) {
   return JSON.parse(trimmed) as Record<string, unknown>;
 }
 
-async function analyzeWithGemini(source: FormData) {
+async function analyzeWithGemini(source: FormData): Promise<Report> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error('Gemini no está configurado en el servidor.');
 
@@ -245,7 +246,7 @@ Maximum 3 main priorities. Make every recommendation actionable, contextual and 
 }
 
 
-async function analyzeStoredWithGemini(meta: UploadMeta, filePath: string, fields: Record<string, unknown>) {
+async function analyzeStoredWithGemini(meta: UploadMeta, filePath: string, fields: Record<string, unknown>): Promise<Report> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error('Gemini no está configurado en el servidor.');
 
